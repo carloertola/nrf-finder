@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#006080" />
+  <title>NRF Finder</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon-192.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=Source+Sans+Pro:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="card">
+      <h1>Natural Resonant Frequency Finder</h1>
+      <p>
+        Follow the pacer and connect a supported sensor. The app runs a guided resonance frequency analysis inspired by
+        Vaschillo-style stepped breathing trials (typically centered around ~0.1 Hz).
+      </p>
+    </header>
+
+    <section class="card controls">
+      <h2>1) Connect Biofeedback</h2>
+      <div class="button-row">
+        <button id="connect-ble">Connect BLE HR Device</button>
+        <button id="connect-camera" class="secondary">Use Camera PPG (Experimental)</button>
+      </div>
+      <p id="connection-status">Status: Not connected</p>
+      <p class="small-text">
+        BLE targets Heart Rate Service devices (Polar H10 and many compatible straps/watches). Oura/Garmin are typically cloud/API-based,
+        so direct browser connection varies by platform.
+      </p>
+    </section>
+
+    <section class="card training">
+      <h2>2) Run Resonance Frequency Analysis</h2>
+      <div class="pacer-wrap">
+        <div id="pacer-circle" aria-live="polite">Ready</div>
+      </div>
+      <div class="button-row">
+        <button id="start-session">Start Session</button>
+        <button id="stop-session" class="secondary">Stop</button>
+      </div>
+      <p id="session-status">Session idle.</p>
+      <div class="progress-wrap">
+        <label for="phase-progress">Phase progress</label>
+        <progress id="phase-progress" max="100" value="0"></progress>
+      </div>
+    </section>
+
+    <section class="card metrics">
+      <h2>Live Metrics</h2>
+      <div class="metric-grid">
+        <article>
+          <h3>Heart Rate</h3>
+          <p><span id="hr-value">--</span> BPM</p>
+        </article>
+        <article>
+          <h3>HRV Smoothness</h3>
+          <p><span id="smoothness-value">--</span></p>
+        </article>
+        <article>
+          <h3>Coherence</h3>
+          <p><span id="coherence-value">--</span></p>
+        </article>
+      </div>
+    </section>
+
+    <section class="card result" id="result-card" hidden>
+      <h2>Session Result</h2>
+      <p id="result-text"></p>
+    </section>
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
