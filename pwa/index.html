@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#006080" />
+  <title>NRF Finder</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon-192.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&family=Source+Sans+Pro:wght@400;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./css/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="screen active" id="screen-intro" aria-labelledby="intro-title">
+      <header class="card">
+        <h1 id="intro-title">Natural Resonant Frequency Finder</h1>
+        <p>
+          This assessment finds the breathing rate where your heart rhythm and breath are most synchronized.
+          You will complete paced breathing trials from <strong>6.5 BPM down to 4.5 BPM</strong>, with
+          <strong>2-minute trials</strong> and <strong>2-minute rest periods</strong> between each trial.
+        </p>
+      </header>
+
+      <section class="card controls">
+        <h2>Step 1: Connect Biofeedback</h2>
+        <div class="button-row">
+          <button id="connect-ble">Connect BLE HR Device</button>
+          <button id="connect-camera" class="secondary">Authorize Camera PPG</button>
+        </div>
+        <p id="connection-status">Status: Not connected</p>
+        <p class="small-text">
+          BLE works with Heart Rate Service devices (Polar H10 and compatible monitors). Oura/Garmin are usually
+          API/app ecosystem based and may not support direct browser connectivity.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>What to expect</h2>
+        <ul>
+          <li>Follow inhale/exhale prompts in each paced trial.</li>
+          <li>During rest periods, breathe naturally and recover to baseline.</li>
+          <li>If you feel lightheaded, breathe more shallowly and pause if needed.</li>
+        </ul>
+      </section>
+
+      <div class="screen-actions">
+        <button id="go-assessment">Continue to Assessment</button>
+      </div>
+    </section>
+
+    <section class="screen" id="screen-assessment" aria-labelledby="assessment-title">
+      <section class="card training">
+        <h2 id="assessment-title">Step 2: Resonance Frequency Assessment</h2>
+        <p id="session-status">Session idle.</p>
+        <p id="phase-label">Next: Trial 1 at 6.5 BPM</p>
+
+        <div class="pacer-wrap">
+          <div id="pacer-circle" aria-live="polite">Ready</div>
+        </div>
+
+        <div class="button-row">
+          <button id="start-session">Start Assessment</button>
+          <button id="stop-session" class="secondary">Stop</button>
+          <button id="back-intro" class="ghost">Back</button>
+        </div>
+
+        <div class="progress-wrap">
+          <label for="phase-progress">Current interval progress</label>
+          <progress id="phase-progress" max="100" value="0"></progress>
+        </div>
+      </section>
+
+      <section class="card metrics">
+        <h2>Live Metrics</h2>
+        <div class="metric-grid">
+          <article>
+            <h3>Heart Rate</h3>
+            <p><span id="hr-value">--</span> BPM</p>
+          </article>
+          <article>
+            <h3>HRV Smoothness</h3>
+            <p><span id="smoothness-value">--</span></p>
+          </article>
+          <article>
+            <h3>Coherence</h3>
+            <p><span id="coherence-value">--</span></p>
+          </article>
+          <article>
+            <h3>Current Focus</h3>
+            <p id="focus-metric">Awaiting session start</p>
+          </article>
+        </div>
+      </section>
+    </section>
+
+    <section class="screen" id="screen-results" aria-labelledby="results-title">
+      <section class="card result">
+        <h2 id="results-title">Step 3: Your NRF Results</h2>
+        <p id="result-text"></p>
+        <p id="result-confidence"></p>
+        <ul id="result-details"></ul>
+      </section>
+      <div class="screen-actions">
+        <button id="restart-flow">Run Again</button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
