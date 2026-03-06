@@ -4,19 +4,23 @@ A Progressive Web App page for estimating a user's natural resonance frequency (
 
 ## What this implementation includes
 
-- **PWA-ready page** (manifest + service worker).
-- **Guided stepped breathing protocol** around the common resonance range (4.5–6.5 BPM), inspired by Vaschillo et al. resonance frequency analysis methods.
-- **Real-time metrics** during the session:
+- **3-screen flow**:
+  1. Intro + setup + sensor connection
+  2. Guided assessment with paced trials and rests
+  3. Final NRF results with confidence and per-trial details
+- **Vaschillo/Lehrer-style standardized trial sequence**:
+  - Trial rates: 6.5, 6.0, 5.5, 5.0, 4.5 BPM (descending by 0.5)
+  - Trial duration: 2 minutes each
+  - Rest duration: 2 minutes between trials
+- **Live metrics** during assessment:
   - Heart Rate (BPM)
   - HRV smoothness proxy
-  - Coherence proxy score
+  - Coherence proxy
+  - Trial focus prompt (what to pay attention to)
 - **Sensor options**:
   - Web Bluetooth Heart Rate Service support (works with many BLE HR monitors such as Polar H10-compatible profiles).
   - Camera PPG mode scaffold (currently experimental synthetic stream for development; hook-in point for full rPPG pipeline).
-- **Session completion output** with estimated NRF in:
-  - BPM
-  - Hz
-  - Seconds per breath
+- **Session completion output** with estimated NRF in BPM, Hz, and seconds per breath.
 
 ## Tech + structure
 
@@ -51,14 +55,15 @@ Then open:
 
 ## NRF analysis model notes
 
-This app uses a practical stepped breathing scan and scores each breathing rate by coherence + smoothness proxies, then selects the highest scoring phase as the NRF estimate.
+The scoring combines multiple resonance-selection criteria inspired by Vaschillo/Lehrer priorities:
 
-For production-grade clinical accuracy, you should extend `js/nrf-analysis.js` with:
+- Phase synchrony proxy
+- Peak-trough amplitude (HR max - HR min)
+- LF-power proxy
+- Spectral cleanliness proxy
+- Smoothness
 
-- spectral peak power around the paced frequency,
-- phase synchrony / transfer function estimates,
-- protocol controls for trial length and repeatability,
-- artifact rejection and quality gates.
+If the strongest trial is at a boundary (4.5 or 6.5 BPM), results include a protocol note recommending an extension trial at 4.0 or 7.0 BPM.
 
 ## Device compatibility notes
 

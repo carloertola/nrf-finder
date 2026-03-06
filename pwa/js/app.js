@@ -1,54 +1,70 @@
 import {
-  BREATH_PHASES_BPM,
+  BASE_TRIALS,
   computeSmoothness,
+  estimateAmplitude,
   estimateCoherence,
   estimateRmssd,
-  getPhaseDurationSec,
+  getRestDurationSec,
+  getTrialDurationSec,
   summarizeResonance,
 } from './nrf-analysis.js';
 import { SensorHub } from './sensors.js';
 
 const el = {
+  screens: {
+    intro: document.querySelector('#screen-intro'),
+    assessment: document.querySelector('#screen-assessment'),
+    results: document.querySelector('#screen-results'),
+  },
   connectBle: document.querySelector('#connect-ble'),
   connectCamera: document.querySelector('#connect-camera'),
   connectionStatus: document.querySelector('#connection-status'),
+  goAssessment: document.querySelector('#go-assessment'),
+  backIntro: document.querySelector('#back-intro'),
+  restartFlow: document.querySelector('#restart-flow'),
   pacerCircle: document.querySelector('#pacer-circle'),
   startSession: document.querySelector('#start-session'),
   stopSession: document.querySelector('#stop-session'),
   sessionStatus: document.querySelector('#session-status'),
+  phaseLabel: document.querySelector('#phase-label'),
   phaseProgress: document.querySelector('#phase-progress'),
   hrValue: document.querySelector('#hr-value'),
   smoothnessValue: document.querySelector('#smoothness-value'),
   coherenceValue: document.querySelector('#coherence-value'),
-  resultCard: document.querySelector('#result-card'),
+  focusMetric: document.querySelector('#focus-metric'),
   resultText: document.querySelector('#result-text'),
+  resultConfidence: document.querySelector('#result-confidence'),
+  resultDetails: document.querySelector('#result-details'),
 };
 
 const state = {
   running: false,
-  phaseIndex: 0,
-  phaseStartMs: 0,
-  phases: [],
+  intervalKind: 'trial',
+  intervalStartMs: 0,
+  intervalTimer: null,
+  pacerTimer: null,
+  trialIndex: 0,
+  trials: [...BASE_TRIALS],
+  trialResults: [],
   hrSamples: [],
   rrIntervals: [],
-  lastBeatTs: null,
-  pacerTimer: null,
-  phaseTimer: null,
 };
 
+function showScreen(screenName) {
+  Object.values(el.screens).forEach((node) => node.classList.remove('active'));
+  el.screens[screenName].classList.add('active');
+}
+
 const sensorHub = new SensorHub((hr, ts) => {
-  state.hrSamples.push({ hr, ts });
+  state.hrSamples.push({ hr, ts, trialIndex: state.trialIndex });
   el.hrValue.textContent = String(hr);
 
-  if (state.lastBeatTs && hr > 0) {
-    const rr = 60000 / hr;
-    state.rrIntervals.push(rr);
-  }
-  state.lastBeatTs = ts;
+  const rr = 60000 / Math.max(1, hr);
+  state.rrIntervals.push(rr);
 
   const recentHrs = state.hrSamples.slice(-40).map((s) => s.hr);
   const smoothness = computeSmoothness(recentHrs);
-  const coherence = estimateCoherence(recentHrs, BREATH_PHASES_BPM[state.phaseIndex] ?? 6);
+  const coherence = estimateCoherence(recentHrs, state.trials[state.trialIndex]?.bpm ?? 6);
 
   el.smoothnessValue.textContent = smoothness === null ? '--' : `${smoothness.toFixed(1)} / 100`;
   el.coherenceValue.textContent = coherence === null ? '--' : `${coherence.toFixed(1)} / 100`;
@@ -77,56 +93,140 @@ function animatePacer(bpm) {
   state.pacerTimer = requestAnimationFrame(tick);
 }
 
-function finishSession() {
-  state.running = false;
-  if (state.phaseTimer) clearInterval(state.phaseTimer);
+function stopPacerRestView() {
   if (state.pacerTimer) cancelAnimationFrame(state.pacerTimer);
+  el.pacerCircle.style.transform = 'scale(1)';
+  el.pacerCircle.textContent = 'Rest\nBreathe naturally';
+}
 
-  const result = summarizeResonance(state.phases);
-  if (!result) {
-    updateStatus('Session ended, but insufficient data for a confident NRF estimate.');
+function normalizeLFMetrics(value, maxValue) {
+  if (!Number.isFinite(value) || !Number.isFinite(maxValue) || maxValue <= 0) return 0;
+  return Math.max(0, Math.min(100, (value / maxValue) * 100));
+}
+
+function finalizeResults() {
+  const summary = summarizeResonance(state.trialResults);
+  if (!summary) {
+    updateStatus('Session ended with insufficient quality data.');
     return;
   }
 
-  el.resultCard.hidden = false;
-  el.resultText.textContent = `Your estimated NRF is ${result.bpm.toFixed(2)} BPM (${result.hz.toFixed(4)} Hz, one breath every ${result.secondsPerBreath.toFixed(2)} s). Confidence: ${result.confidence}%.`;
-  updateStatus('Session completed successfully.');
+  el.resultText.textContent = `Estimated NRF: ${summary.bpm.toFixed(2)} BPM (${summary.hz.toFixed(4)} Hz, ${summary.secondsPerBreath.toFixed(2)} s per breath).`;
+  el.resultConfidence.textContent = `Confidence: ${summary.confidence}%`;
+  el.resultDetails.innerHTML = '';
+
+  state.trialResults
+    .sort((a, b) => b.finalScore - a.finalScore)
+    .forEach((trial) => {
+      const li = document.createElement('li');
+      li.textContent = `${trial.bpm.toFixed(1)} BPM — Score ${trial.finalScore.toFixed(1)} | Coherence ${trial.coherence.toFixed(1)} | Amplitude ${trial.amplitude.toFixed(1)} | Smoothness ${trial.smoothness.toFixed(1)}`;
+      el.resultDetails.appendChild(li);
+    });
+
+  if (summary.boundaryExtensionNeeded) {
+    const extensionBpm = summary.boundaryDirection === 'upper' ? 7.0 : 4.0;
+    const li = document.createElement('li');
+    li.textContent = `Protocol note: best score hit boundary (${summary.bpm.toFixed(1)} BPM). Consider extension trial at ${extensionBpm.toFixed(1)} BPM.`;
+    el.resultDetails.appendChild(li);
+  }
+
+  showScreen('results');
 }
 
-function runPhaseLoop() {
-  const phaseDurationMs = getPhaseDurationSec() * 1000;
-  state.phaseStartMs = performance.now();
+function completeTrial() {
+  const currentTrial = state.trials[state.trialIndex];
+  const trialSamples = state.hrSamples.filter((s) => s.trialIndex === state.trialIndex).map((s) => s.hr);
+  const smoothness = computeSmoothness(trialSamples) ?? 0;
+  const coherence = estimateCoherence(trialSamples, currentTrial.bpm) ?? 0;
+  const amplitudeRaw = estimateAmplitude(trialSamples) ?? 0;
+  const rmssd = estimateRmssd(state.rrIntervals.slice(-120)) ?? 0;
 
-  state.phaseTimer = setInterval(() => {
+  state.trialResults.push({
+    bpm: currentTrial.bpm,
+    smoothness,
+    coherence,
+    amplitudeRaw,
+    rmssd,
+    phaseSynchrony: coherence,
+    lfPowerRaw: rmssd,
+    spectralCleanliness: smoothness,
+    amplitude: 0,
+    lfPower: 0,
+    finalScore: 0,
+  });
+}
+
+function scoreTrials() {
+  const maxAmplitude = Math.max(...state.trialResults.map((t) => t.amplitudeRaw), 1);
+  const maxLf = Math.max(...state.trialResults.map((t) => t.lfPowerRaw), 1);
+
+  state.trialResults.forEach((trial) => {
+    trial.amplitude = normalizeLFMetrics(trial.amplitudeRaw, maxAmplitude);
+    trial.lfPower = normalizeLFMetrics(trial.lfPowerRaw, maxLf);
+    trial.finalScore =
+      trial.coherence * 0.34 +
+      trial.amplitude * 0.22 +
+      trial.lfPower * 0.16 +
+      trial.spectralCleanliness * 0.12 +
+      trial.smoothness * 0.10 +
+      trial.phaseSynchrony * 0.06;
+  });
+}
+
+function startInterval(kind) {
+  state.intervalKind = kind;
+  state.intervalStartMs = performance.now();
+
+  const currentTrial = state.trials[state.trialIndex];
+  if (kind === 'trial') {
+    animatePacer(currentTrial.bpm);
+    el.phaseLabel.textContent = `Trial ${state.trialIndex + 1}/${state.trials.length}: ${currentTrial.bpm.toFixed(1)} BPM`;
+    el.focusMetric.textContent = currentTrial.focus;
+    updateStatus(`Trial running at ${currentTrial.bpm.toFixed(1)} BPM. Follow inhale/exhale pacing.`);
+  } else {
+    stopPacerRestView();
+    el.phaseLabel.textContent = `Rest interval ${state.trialIndex}/${state.trials.length}`;
+    el.focusMetric.textContent = 'Recovery to baseline';
+    updateStatus('Rest period: breathe naturally for 2 minutes.');
+  }
+}
+
+function stopSession(reason = 'Session stopped.') {
+  state.running = false;
+  if (state.intervalTimer) clearInterval(state.intervalTimer);
+  if (state.pacerTimer) cancelAnimationFrame(state.pacerTimer);
+  updateStatus(reason);
+}
+
+function runSessionLoop() {
+  if (state.intervalTimer) clearInterval(state.intervalTimer);
+
+  state.intervalTimer = setInterval(() => {
     const now = performance.now();
-    const elapsed = now - state.phaseStartMs;
-    const progress = Math.min(100, (elapsed / phaseDurationMs) * 100);
-    el.phaseProgress.value = progress;
+    const elapsedMs = now - state.intervalStartMs;
+    const durationMs = (state.intervalKind === 'trial' ? getTrialDurationSec() : getRestDurationSec()) * 1000;
+    el.phaseProgress.value = Math.min(100, (elapsedMs / durationMs) * 100);
 
-    if (elapsed >= phaseDurationMs) {
-      const phaseBpm = BREATH_PHASES_BPM[state.phaseIndex];
-      const recentHrs = state.hrSamples
-        .filter((s) => s.ts >= state.phaseStartMs)
-        .map((s) => s.hr);
-      state.phases.push({
-        bpm: phaseBpm,
-        smoothness: computeSmoothness(recentHrs) ?? 0,
-        coherence: estimateCoherence(recentHrs, phaseBpm) ?? 0,
-        rmssd: estimateRmssd(state.rrIntervals) ?? 0,
-      });
+    if (elapsedMs < durationMs) return;
 
-      state.phaseIndex += 1;
-      if (state.phaseIndex >= BREATH_PHASES_BPM.length) {
-        finishSession();
+    el.phaseProgress.value = 0;
+
+    if (state.intervalKind === 'trial') {
+      completeTrial();
+
+      if (state.trialIndex === state.trials.length - 1) {
+        stopSession('Assessment complete.');
+        scoreTrials();
+        finalizeResults();
         return;
       }
 
-      state.phaseStartMs = now;
-      el.phaseProgress.value = 0;
-      const nextBpm = BREATH_PHASES_BPM[state.phaseIndex];
-      animatePacer(nextBpm);
-      updateStatus(`Phase ${state.phaseIndex + 1}/${BREATH_PHASES_BPM.length}: breathe at ${nextBpm.toFixed(1)} BPM.`);
+      startInterval('rest');
+      return;
     }
+
+    state.trialIndex += 1;
+    startInterval('trial');
   }, 200);
 }
 
@@ -148,29 +248,31 @@ el.connectCamera.addEventListener('click', async () => {
   }
 });
 
+el.goAssessment.addEventListener('click', () => showScreen('assessment'));
+el.backIntro.addEventListener('click', () => showScreen('intro'));
+el.restartFlow.addEventListener('click', () => {
+  showScreen('intro');
+  el.phaseProgress.value = 0;
+  el.resultDetails.innerHTML = '';
+});
+
 el.startSession.addEventListener('click', () => {
   if (state.running) return;
   state.running = true;
-  state.phaseIndex = 0;
-  state.phases = [];
+  state.trialIndex = 0;
+  state.trials = [...BASE_TRIALS];
+  state.trialResults = [];
   state.hrSamples = [];
   state.rrIntervals = [];
-  state.lastBeatTs = null;
-  el.resultCard.hidden = true;
   el.phaseProgress.value = 0;
 
-  const bpm = BREATH_PHASES_BPM[state.phaseIndex];
-  animatePacer(bpm);
-  updateStatus(`Phase 1/${BREATH_PHASES_BPM.length}: breathe at ${bpm.toFixed(1)} BPM.`);
-  runPhaseLoop();
+  startInterval('trial');
+  runSessionLoop();
 });
 
 el.stopSession.addEventListener('click', () => {
   if (!state.running) return;
-  state.running = false;
-  if (state.phaseTimer) clearInterval(state.phaseTimer);
-  if (state.pacerTimer) cancelAnimationFrame(state.pacerTimer);
-  updateStatus('Session stopped by user.');
+  stopSession('Session stopped by user.');
 });
 
 window.addEventListener('beforeunload', () => sensorHub.disconnect());
