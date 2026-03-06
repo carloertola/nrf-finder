@@ -20,6 +20,7 @@ body {
   max-width: 980px;
   margin: 1.5rem auto;
   padding: 0 1rem 2rem;
+  min-height: 90vh;
 }
 
 .screen {
@@ -29,6 +30,24 @@ body {
 
 .screen.active {
   display: grid;
+}
+
+.screen.screen-in {
+  animation: slideIn 260ms ease;
+}
+
+.screen.screen-out {
+  animation: fadeOut 140ms ease;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
 }
 
 .card {
@@ -64,6 +83,12 @@ button {
   background: var(--primary);
   color: #fff;
   font-weight: 700;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
 }
 
 button.secondary {
